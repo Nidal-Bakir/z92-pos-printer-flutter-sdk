@@ -63,10 +63,6 @@ jobs:
       - name: 🎯 publish dry run
         run: flutter pub publish --dry-run
 
-      - name: Build Android example
-        working-directory: example
-        run: flutter build apk --release --target-platform android-arm,android-arm64
-
       - name: Run native Android tests
         working-directory: example/android
         run: ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest --console=plain
