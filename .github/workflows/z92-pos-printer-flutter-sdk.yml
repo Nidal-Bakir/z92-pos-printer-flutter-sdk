@@ -1,0 +1,84 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📚 Git checkout
+        uses: actions/checkout@v4
+
+      - name: 🎯 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.2"
+          channel: stable
+          cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 📦 Install dependencies
+        run: flutter pub get
+      - name: 📦 Install example dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: ✨ Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test example/lib example/test
+
+      - name: 🕵️ Analyze project source
+        run: flutter analyze --fatal-infos
+
+      - name: 🧪 Run tests
+        run: flutter test --coverage --concurrency=4 --test-randomize-ordering-seed random
+
+      - name: Run example tests
+        working-directory: example
+        run: flutter test --test-randomize-ordering-seed random
+
+      - name: 📊 Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: 🎯 publish dry run
+        run: flutter pub publish --dry-run
+
+      - name: Build Android example
+        working-directory: example
+        run: flutter build apk --release --target-platform android-arm,android-arm64
+
+      - name: Run native Android tests
+        working-directory: example/android
+        run: ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest --console=plain
+
+      - name: 📦 Install PANA
+        run: dart pub global activate pana
+
+      - name: 📊 Verify PANA score
+        run: |
+          dart pub global run pana --json . > "$RUNNER_TEMP/pana.json"
+          jq '.scores' "$RUNNER_TEMP/pana.json"
+          if ! jq -e '.scores.grantedPoints >= 120' "$RUNNER_TEMP/pana.json"; then
+            echo "The minimum PANA score of 120 was not met!"
+            exit 1
+          fi

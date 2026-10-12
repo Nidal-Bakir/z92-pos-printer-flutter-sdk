@@ -1,5 +1,7 @@
 # Z92 POS Printer Flutter SDK
 
+[![Flutter CI](https://github.com/Nidal-Bakir/z92-pos-printer-flutter-sdk/actions/workflows/z92-pos-printer-flutter-sdk.yml/badge.svg?branch=main)](https://github.com/Nidal-Bakir/z92-pos-printer-flutter-sdk/actions/workflows/z92-pos-printer-flutter-sdk.yml) [![codecov](https://codecov.io/gh/Nidal-Bakir/z92-pos-printer-flutter-sdk/branch/main/graph/badge.svg?token=WMK1RZQ2JE)](https://codecov.io/gh/Nidal-Bakir/z92-pos-printer-flutter-sdk) [![z92_pos_printer_flutter_sdk on pub.dev](https://img.shields.io/pub/v/z92_pos_printer_flutter_sdk.svg)](https://pub.dev/packages/z92_pos_printer_flutter_sdk)
+
 Maintained by **Nidal Bakir**. Version **1.0.0** provides ZCS printer integration for Flutter applications.
 
 Flutter plugin for the **built-in printer on ZCS Z92 and Z91 Android POS terminals**. The software validation target is Flutter **3.44.2** and Z92 devices running **ZOS based on Android 13**. Physical printing on the deployment device must be verified before production use.
@@ -79,17 +81,17 @@ Await each operation and stop on failure. Calls are serialized across plugin eng
 
 ## Printing operations
 
-| Public method | Input and behavior |
-| --- | --- |
-| `printText` | Text, alignment, bold, font size (default 30) |
-| `print2Column` | Left/right text and relative column weights (default 60/40); default font size 16 |
-| `print3Column` | Left/center/right text and relative weights (default 60/40/40); default font size 16 |
-| `printLine` | Repeats `lineStyle`; default 19 repetitions |
-| `printSpace` | Appends blank lines; zero lines is a no-op |
-| `printQRCode` | Text, width and height in pixels; centered |
-| `printBarCode128` | Code 128 text, width and height in pixels; centered, without human-readable digits |
-| `printImage` | Encoded PNG/JPEG bytes, centered and scaled to printer width by the SDK |
-| `printBitMap` | Alias for encoded-image printing |
+| Public method     | Input and behavior                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| `printText`       | Text, alignment, bold, font size (default 30)                                        |
+| `print2Column`    | Left/right text and relative column weights (default 60/40); default font size 16    |
+| `print3Column`    | Left/center/right text and relative weights (default 60/40/40); default font size 16 |
+| `printLine`       | Repeats `lineStyle`; default 19 repetitions                                          |
+| `printSpace`      | Appends blank lines; zero lines is a no-op                                           |
+| `printQRCode`     | Text, width and height in pixels; centered                                           |
+| `printBarCode128` | Code 128 text, width and height in pixels; centered, without human-readable digits   |
+| `printImage`      | Encoded PNG/JPEG bytes, centered and scaled to printer width by the SDK              |
+| `printBitMap`     | Alias for encoded-image printing                                                     |
 
 Column weights are normalized by the SDK and do not have to total 100. Each must be positive; `60/15/25` is a practical three-column starting point. Check long text, wrapping, and the actual receipt language on hardware.
 
@@ -120,18 +122,18 @@ Channel failures can throw `PlatformException`; unsupported platforms or missing
 
 The SDK status codes inspected in this version are:
 
-| Code | Meaning |
-| --- | --- |
-| `0` | SDK success/ready |
-| `-1001` | SDK error |
-| `-1002` | SDK parameter error |
-| `-1003` | SDK timeout |
-| `-1401` | Printer error |
+| Code    | Meaning                 |
+| ------- | ----------------------- |
+| `0`     | SDK success/ready       |
+| `-1001` | SDK error               |
+| `-1002` | SDK parameter error     |
+| `-1003` | SDK timeout             |
+| `-1401` | Printer error           |
 | `-1402` | Printer parameter error |
-| `-1403` | Paper out |
-| `-1404` | Overheated |
-| `-1405` | Printer fault |
-| `-1406` | Already printing |
+| `-1403` | Paper out               |
+| `-1404` | Overheated              |
+| `-1405` | Printer fault           |
+| `-1406` | Already printing        |
 
 These codes are logged under `z92PosPrinter`; they are not exposed by the boolean Dart API. Inspect logs on the selected terminal:
 

@@ -1,0 +1,79 @@
+name: Publish to pub.dev
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - name: 📚 Git checkout
+        uses: actions/checkout@v4
+
+      # setup-dart configures pub.dev's OIDC token; Flutter is needed by this package.
+      - name: Setup pub.dev authentication
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+
+      - name: 🎯 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.2"
+          channel: stable
+          cache: true
+
+      - name: Verify release tag matches package version
+        run: |
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r')
+          if [[ "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match pubspec.yaml version v$VERSION"
+            exit 1
+          fi
+
+      - name: 📦 Install dependencies
+        run: flutter pub get
+
+      - name: Install example dependencies
+        working-directory: example
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed lib test example/lib example/test
+
+      - name: Analyze project source
+        run: flutter analyze --fatal-infos
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Run example tests
+        working-directory: example
+        run: flutter test
+
+      - name: Verify package before publishing
+        run: flutter pub publish --dry-run
+
+      - name: 🚀 publish
+        run: flutter pub publish --force
+
+      - name: 🚀 Create release from tag for github releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
