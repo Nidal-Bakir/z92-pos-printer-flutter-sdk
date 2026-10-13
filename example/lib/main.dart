@@ -85,7 +85,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<bool?> _printImage() async {
-    final asset = await rootBundle.load('asset/A4.png');
+    final asset = await rootBundle.load('asset/a4-print-test.png');
     return _printer.printImage(
       pathImage:
           asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes),
