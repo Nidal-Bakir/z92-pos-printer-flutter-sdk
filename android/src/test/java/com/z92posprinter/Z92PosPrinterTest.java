@@ -7,9 +7,13 @@ import com.zcs.sdk.SdkResult;
 import com.zcs.sdk.print.PrnStrFormat;
 import com.zcs.sdk.print.PrnTextStyle;
 import io.flutter.plugin.common.MethodCall;
+import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
@@ -18,6 +22,58 @@ import static org.mockito.Mockito.*;
 
 public class Z92PosPrinterTest {
     private final Printer printer = mock(Printer.class);
+    private final List<String> pending = new ArrayList<>();
+
+    @Before public void installSdkBuffer() throws Exception {
+        Field buffer = Printer.class.getDeclaredField("h");
+        buffer.setAccessible(true);
+        buffer.set(printer, pending);
+    }
+
+    @Test public void failedAppendOrStartCannotContaminateNextReceipt() {
+        for (Throwable failure : new Throwable[]{new IllegalStateException(),
+                new UnsatisfiedLinkError(), new OutOfMemoryError()}) {
+            for (boolean failDuringAppend : new boolean[]{true, false}) {
+                doAnswer(invocation -> {
+                    String content = invocation.getArgument(0);
+                    pending.add(content);
+                    if (failDuringAppend && content.equals("Receipt")) throw failure;
+                    return null;
+                }).when(printer).setPrintAppendString(anyString(), any(PrnStrFormat.class));
+                doAnswer(invocation -> {
+                    if (pending.contains("Receipt")) throw failure;
+                    assertEquals(List.of("Next receipt"), pending);
+                    return SdkResult.SDK_OK;
+                }).when(printer).setPrintStart();
+
+                assertThrows(failure.getClass(), () -> Z92PosPrinter.executePrint(printer, null, text()));
+                assertTrue(pending.isEmpty());
+                assertTrue(Z92PosPrinter.executePrint(printer, null,
+                        call("printText", "text", "Next receipt", "fontSize", 20,
+                                "isBold", false, "Alignment", 1)));
+                assertTrue(pending.isEmpty());
+            }
+        }
+    }
+
+    @Test public void inaccessibleBufferPreventsAppending() throws Exception {
+        Field buffer = Printer.class.getDeclaredField("h");
+        buffer.setAccessible(true);
+        buffer.set(printer, null);
+        assertFalse(Z92PosPrinter.executePrint(printer, null, text()));
+        verifyNoInteractions(printer);
+    }
+
+    @Test public void staleBufferIsClearedBeforeAppending() {
+        pending.add("Previous receipt");
+        doAnswer(invocation -> {
+            assertTrue(pending.isEmpty());
+            pending.add(invocation.getArgument(0));
+            return null;
+        }).when(printer).setPrintAppendString(anyString(), any(PrnStrFormat.class));
+        assertTrue(Z92PosPrinter.executePrint(printer, null, text()));
+        assertTrue(pending.isEmpty());
+    }
 
     private MethodCall call(String method, Object... arguments) {
         Map<String, Object> data = new HashMap<>();
