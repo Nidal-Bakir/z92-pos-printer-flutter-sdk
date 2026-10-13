@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- clear SDK print buffer after failed jobs
+
 ## 1.0.0 — Initial release
 
 - Android integration for built-in ZCS Z92 and Z91 POS printers.

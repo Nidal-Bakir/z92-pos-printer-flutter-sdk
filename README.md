@@ -2,7 +2,7 @@
 
 [![Flutter CI](https://github.com/Nidal-Bakir/z92-pos-printer-flutter-sdk/actions/workflows/z92-pos-printer-flutter-sdk.yml/badge.svg?branch=main)](https://github.com/Nidal-Bakir/z92-pos-printer-flutter-sdk/actions/workflows/z92-pos-printer-flutter-sdk.yml) [![codecov](https://codecov.io/gh/Nidal-Bakir/z92-pos-printer-flutter-sdk/branch/main/graph/badge.svg?token=WMK1RZQ2JE)](https://codecov.io/gh/Nidal-Bakir/z92-pos-printer-flutter-sdk) [![z92_pos_printer_flutter_sdk on pub.dev](https://img.shields.io/pub/v/z92_pos_printer_flutter_sdk.svg)](https://pub.dev/packages/z92_pos_printer_flutter_sdk)
 
-Maintained by **Nidal Bakir**. Version **1.0.0** provides ZCS printer integration for Flutter applications.
+Maintained by **Nidal Bakir**. SDK that provides ZCS printer integration for Flutter applications.
 
 Flutter plugin for the **built-in printer on ZCS Z92 and Z91 Android POS terminals**. The software validation target is Flutter **3.44.2** and Z92 devices running **ZOS based on Android 13**. Physical printing on the deployment device must be verified before production use.
 
@@ -20,11 +20,11 @@ ZCS lists Z91 and Z92 in its [Android POS SDK family](https://www.szzcs.com/Supp
 
 ## Installation
 
-For the first published release, add the package to your app's `pubspec.yaml`:
+Add the package to your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  z92_pos_printer_flutter_sdk: ^1.0.0
+  z92_pos_printer_flutter_sdk: ^1.0.1
 ```
 
 Run `flutter pub get`, then fully rebuild the Android app so the native plugin and libraries are included. Hot reload alone does not install native changes.
