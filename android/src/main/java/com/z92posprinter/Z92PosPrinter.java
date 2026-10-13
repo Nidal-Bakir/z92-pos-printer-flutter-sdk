@@ -18,6 +18,8 @@ import com.zcs.sdk.print.PrnStrFormat;
 import com.zcs.sdk.print.PrnTextFont;
 import com.zcs.sdk.print.PrnTextStyle;
 
+import java.lang.reflect.Field;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -110,6 +112,29 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
 
     // Package visibility allows hardware-free regression tests against a mock SDK printer.
     static boolean executePrint(Printer printer, Context context, MethodCall call) {
+        final List<?> pending;
+        try {
+            // SmartPos_1.9.0_R240612 has no reset API: h is its bitmap append buffer.
+            // consumer-rules.pro preserves vendor field names. Fail closed if the SDK changes.
+            Field buffer = Printer.class.getDeclaredField("h");
+            buffer.setAccessible(true);
+            Object value = buffer.get(printer);
+            if (!(value instanceof List<?>)) return false;
+            pending = (List<?>) value;
+        } catch (ReflectiveOperationException e) {
+            Log.w(TAG, "Cannot access SDK print buffer");
+            return false;
+        }
+        try {
+            pending.clear();
+            return executePrintJob(printer, context, call);
+        } finally {
+            // The SDK only clears on normal completion; also release content after append/OOM failures.
+            pending.clear();
+        }
+    }
+
+    private static boolean executePrintJob(Printer printer, Context context, MethodCall call) {
         int status = printer.getPrinterStatus();
         if (status != SdkResult.SDK_OK) {
             Log.w(TAG, "Printer unavailable: " + status);
