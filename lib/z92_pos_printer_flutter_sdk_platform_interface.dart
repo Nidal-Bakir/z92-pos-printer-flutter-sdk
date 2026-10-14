@@ -25,6 +25,10 @@ abstract class Posz92printerPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  Future<bool?> printBatch({required List<PrintCommand> commands}) {
+    throw UnimplementedError('printBatch() has not been implemented.');
+  }
+
   Future<bool?> printText({
     required String text,
     AlignmentPrint alignment = AlignmentPrint.left,

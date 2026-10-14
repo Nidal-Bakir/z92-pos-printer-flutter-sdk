@@ -1,6 +1,9 @@
 import 'package:flutter/services.dart';
 
+import 'print_command.dart';
 import 'z92_pos_printer_flutter_sdk_platform_interface.dart';
+
+export 'print_command.dart';
 
 enum AlignmentPrint { center, left, right }
 
@@ -12,6 +15,17 @@ enum AlignmentPrint { center, left, right }
 /// A temporarily printing printer is polled for up to 10 seconds before the
 /// next command is submitted. Failed submissions are never retried automatically.
 class PrinterPosSystem {
+  /// Appends ordered commands and submits them as one SDK print job.
+  ///
+  /// Supports at most 1000 commands. An empty batch or one containing only
+  /// zero-length feed/separator commands is a no-op when the printer is ready.
+  /// Invalid input or append failure prevents submission of the entire batch.
+  /// A failed submission may have printed partially; never retry automatically.
+  /// `true` reports SDK success, not verified physical completion.
+  Future<bool?> printBatch({required List<PrintCommand> commands}) {
+    return Posz92printerPlatform.instance.printBatch(commands: commands);
+  }
+
   Future<bool?> printText(
       {required String text,
       AlignmentPrint alignment = AlignmentPrint.left,

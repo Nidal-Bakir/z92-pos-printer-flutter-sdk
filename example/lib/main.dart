@@ -39,49 +39,46 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  Future<bool> _printReceipt() async {
-    // Stop at the first failure. A retry could duplicate a partially printed sale.
-    final operations = <Future<bool?> Function()>[
-      () => _printer.printText(
-            text: 'Z92 DEMO STORE',
-            alignment: AlignmentPrint.center,
-            isBold: true,
-            fontSize: 24,
-          ),
-      () => _printer.printLine(fontSize: 16),
-      () => _printer.print3Column(
-            textLeft: 'Item',
-            textCenter: 'Qty',
-            textRight: 'Price',
-            spaceLeft: 60,
-            spaceCenter: 15,
-            spaceRight: 25,
-            isBold: true,
-          ),
-      () => _printer.print3Column(
-            textLeft: 'Coffee',
-            textCenter: '2',
-            textRight: '6.00',
-            spaceLeft: 60,
-            spaceCenter: 15,
-            spaceRight: 25,
-          ),
-      () => _printer.print2Column(
-            textLeft: 'TOTAL',
-            textRight: '6.00',
-            isBold: true,
-          ),
-      () => _printer.printText(
-            text: 'Thank you!',
-            alignment: AlignmentPrint.center,
-            fontSize: 18,
-          ),
-      () => _printer.printSpace(space: 3),
-    ];
-    for (final operation in operations) {
-      if (await operation() != true) return false;
-    }
-    return true;
+  Future<bool?> _printReceipt() {
+    // One submission; a retry could duplicate a partially printed sale.
+    return _printer.printBatch(commands: [
+      PrintCommand.text(
+        text: 'Z92 DEMO STORE',
+        alignment: AlignmentPrint.center,
+        isBold: true,
+        fontSize: 24,
+      ),
+      PrintCommand.line(fontSize: 16),
+      PrintCommand.threeColumn(
+        textLeft: 'Item',
+        textCenter: 'Qty',
+        textRight: 'Price',
+        spaceLeft: 60,
+        spaceCenter: 15,
+        spaceRight: 25,
+        isBold: true,
+      ),
+      PrintCommand.threeColumn(
+        textLeft: 'Coffee',
+        textCenter: '2',
+        textRight: '6.00',
+        spaceLeft: 60,
+        spaceCenter: 15,
+        spaceRight: 25,
+      ),
+      PrintCommand.twoColumn(
+        textLeft: 'TOTAL',
+        textRight: '6.00',
+        isBold: true,
+      ),
+      PrintCommand.text(
+        text: 'Thank you!',
+        alignment: AlignmentPrint.center,
+        fontSize: 18,
+      ),
+      PrintCommand.qrCode(text: 'Z92-DEMO-001', width: 200, height: 200),
+      PrintCommand.space(space: 3),
+    ]);
   }
 
   Future<bool?> _printImage() async {

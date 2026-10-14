@@ -11,7 +11,7 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  testWidgets('receipt stops after a failed operation and can be tried again',
+  testWidgets('failed batch is not retried automatically and controls recover',
       (tester) async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -22,7 +22,7 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.tap(find.text('Print sample receipt'));
     await tester.pumpAndSettle();
-    expect(calls.map((call) => call.method), ['printText']);
+    expect(calls.map((call) => call.method), ['printBatch']);
     expect(find.textContaining('Printing failed.'), findsOneWidget);
     final button = tester.widget<ElevatedButton>(
       find.widgetWithText(ElevatedButton, 'Print sample receipt'),
@@ -30,7 +30,9 @@ void main() {
     expect(button.onPressed, isNotNull);
   });
 
-  testWidgets('receipt operations complete in order', (tester) async {
+  testWidgets(
+      'receipt is sent as one ordered batch including QR and final feed',
+      (tester) async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -40,13 +42,16 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.tap(find.text('Print sample receipt'));
     await tester.pumpAndSettle();
-    expect(calls.map((call) => call.method), [
+    expect(calls.map((call) => call.method), ['printBatch']);
+    final commands = calls.single.arguments['commands'] as List;
+    expect(commands.map((command) => command['method']), [
       'printText',
       'printLine',
       'print3Column',
       'print3Column',
       'print2Column',
       'printText',
+      'printQrCode',
       'printSpace',
     ]);
     expect(find.textContaining('SDK reported success.'), findsOneWidget);
