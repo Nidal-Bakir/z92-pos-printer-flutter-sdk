@@ -19,7 +19,10 @@ import com.zcs.sdk.print.PrnTextFont;
 import com.zcs.sdk.print.PrnTextStyle;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -108,6 +111,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
             case "printImage":
             case "printImageBitmap":
             case "printBarCode128":
+            case "printBatch":
                 return true;
             default:
                 return false;
@@ -196,7 +200,48 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
 
     private static boolean executePrintJob(Printer printer, Context context, MethodCall call,
             Z92PosPrinter engine, int generation) {
+        List<MethodCall> commands = call.method.equals("printBatch")
+                ? batchCommands(call) : Collections.singletonList(call);
+        boolean appended = false;
+        for (MethodCall command : commands) {
+            if (!canDispatch(engine, generation)) return false;
+            appended |= appendPrintCommand(printer, context, command);
+        }
         if (!canDispatch(engine, generation)) return false;
+        if (!appended) return true;
+        // Never retry: a failed start can already have produced partial physical output.
+        int status = printer.setPrintStart();
+        if (status != SdkResult.SDK_OK) {
+            Log.w(TAG, call.method + " print submission failed, status=" + status);
+        }
+        return status == SdkResult.SDK_OK;
+    }
+
+    private static List<MethodCall> batchCommands(MethodCall call) {
+        Object value = call.argument("commands");
+        if (!(value instanceof List<?>) || ((List<?>) value).size() > 1000) {
+            throw new IllegalArgumentException("Expected at most 1000 batch commands");
+        }
+        List<MethodCall> commands = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            if (!(item instanceof Map<?, ?>)) {
+                throw new IllegalArgumentException("Expected batch command map");
+            }
+            Map<?, ?> entry = (Map<?, ?>) item;
+            Object method = entry.get("method");
+            Object arguments = entry.get("arguments");
+            if (!(method instanceof String) || !isPrintMethod((String) method)
+                    || method.equals("printBatch") || !(arguments instanceof Map<?, ?>)) {
+                throw new IllegalArgumentException("Invalid batch command");
+            }
+            commands.add(new MethodCall((String) method, arguments));
+        }
+        return commands;
+    }
+
+    // Validation and appending are shared with standalone commands. No content is
+    // submitted until every append succeeds; executePrint always clears the buffer.
+    private static boolean appendPrintCommand(Printer printer, Context context, MethodCall call) {
         switch (call.method) {
             case "printText":
             case "printBitMap":
@@ -204,7 +249,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
                 break;
             case "printSpace":
                 int lines = integer(call, "space", 0, 1000);
-                if (lines == 0) return true;
+                if (lines == 0) return false;
                 PrnStrFormat spaceFormat = new PrnStrFormat();
                 for (int i = 0; i < lines; i++) {
                     printer.setPrintAppendString("", spaceFormat);
@@ -231,7 +276,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
                 int count = integer(call, "lineSize", 0, 1000);
                 PrnStrFormat lineFormat = format(call, "Alignment");
                 lineFormat.setFont(PrnTextFont.SANS_SERIF);
-                if (count == 0) return true;
+                if (count == 0) return false;
                 if ((long) style.length() * count > 65536) {
                     throw new IllegalArgumentException("Line is too long");
                 }
@@ -266,13 +311,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
             default:
                 throw new IllegalArgumentException("Unknown print method");
         }
-        if (!canDispatch(engine, generation)) return false;
-        // Never retry: a failed start can already have produced partial physical output.
-        int status = printer.setPrintStart();
-        if (status != SdkResult.SDK_OK) {
-            Log.w(TAG, call.method + " print submission failed, status=" + status);
-        }
-        return status == SdkResult.SDK_OK;
+        return true;
     }
 
     private static void appendColumns(Printer printer, MethodCall call, boolean threeColumns) {

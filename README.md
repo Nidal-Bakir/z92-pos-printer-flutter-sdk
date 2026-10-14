@@ -24,7 +24,7 @@ Add the package to your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  z92_pos_printer_flutter_sdk: ^1.0.2
+  z92_pos_printer_flutter_sdk: ^1.1.0
 ```
 
 Run `flutter pub get`, then fully rebuild the Android app so the native plugin and libraries are included. Hot reload alone does not install native changes.
@@ -46,16 +46,16 @@ import 'package:z92_pos_printer_flutter_sdk/z92_pos_printer_flutter_sdk.dart';
 
 final printer = PrinterPosSystem();
 
-Future<bool> printReceipt() async {
-  final steps = <Future<bool?> Function()>[
-    () => printer.printText(
+Future<bool> printExampleBatch() async {
+  final result = await printer.printBatch(commands: [
+    PrintCommand.text(
       text: 'MY STORE',
       alignment: AlignmentPrint.center,
       isBold: true,
       fontSize: 24,
     ),
-    () => printer.printLine(fontSize: 16),
-    () => printer.print3Column(
+    PrintCommand.line(fontSize: 16),
+    PrintCommand.threeColumn(
       textLeft: 'Coffee',
       textCenter: '2',
       textRight: '6.00',
@@ -63,26 +63,52 @@ Future<bool> printReceipt() async {
       spaceCenter: 15,
       spaceRight: 25,
     ),
-    () => printer.print2Column(
+    PrintCommand.twoColumn(
       textLeft: 'TOTAL',
       textRight: '6.00',
       isBold: true,
     ),
-    () => printer.printSpace(space: 3),
-  ];
-  for (final step in steps) {
-    if (await step() != true) return false;
-  }
-  return true;
+    PrintCommand.qrCode(text: 'ORDER-001', width: 200, height: 200),
+    PrintCommand.space(space: 3),
+  ]);
+  return result == true;
 }
 ```
 
-Await each operation and stop on failure. Calls are serialized across plugin engines, but a receipt composed of separate calls is **not an atomic job**: concurrent receipt producers can interleave. Keep one receipt producer active in the host app. Do not automatically retry a failed receipt, because part of it may already have printed.
+`printBatch` waits for printer readiness once, appends all commands in order, and calls the vendor's `setPrintStart()` once. Each batch occupies one slot on the background queue, so other print jobs cannot interleave with its commands. Constructing a `PrintCommand` does not print anything. Existing individual methods remain available; await each operation and stop on failure. A receipt composed of separate calls can interleave with other producers, so keep one such producer active in the host app.
+
+Both paths wait up to 10 seconds only while the printer reports `PRINTING`, using a monotonic deadline and approximately 100 ms polling. Other non-ready statuses fail immediately. SDK success does not establish that the printer motor has stopped. Do not automatically retry a failed batch or receipt, because part of it may already have printed.
+
+For a logo followed by rasterized Arabic fields, QR code, and final feed:
+
+```dart
+import 'dart:typed_data';
+import 'package:z92_pos_printer_flutter_sdk/z92_pos_printer_flutter_sdk.dart';
+
+Future<bool> printArabicBatch({
+  required Uint8List logoPng,
+  required List<Uint8List> fieldPngs,
+  required String qrPayload,
+}) async {
+  final result = await PrinterPosSystem().printBatch(commands: [
+    PrintCommand.image(pathImage: logoPng),
+    ...fieldPngs.map((png) => PrintCommand.image(pathImage: png)),
+    PrintCommand.qrCode(text: qrPayload, width: 200, height: 200),
+    PrintCommand.space(space: 3),
+  ]);
+  return result == true;
+}
+```
+
+Prepare the PNGs before calling `printBatch`. For migration, replace each individual print call with the matching `PrintCommand` constructor and send the complete ordered list once. Commands are `text`, `twoColumn`, `threeColumn`, `image`, `qrCode`, `barCode128`, `line`, and `space`; their defaults match the public standalone methods. Column commands additionally accept per-column alignment.
+
+A batch accepts at most 1000 commands and cannot contain nested batches. Empty batches and batches containing only zero-length feed/separator commands succeed without submission when the printer is ready. Invalid commands or append exceptions prevent submission; the append buffer is cleared on every exit. The SDK combines the buffered content into one bitmap, so use receipt-sized images and batches to limit peak memory. Matching the factory demo's speed requires a comparison on the actual device.
 
 ## Printing operations
 
 | Public method     | Input and behavior                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------ |
+| `printBatch`      | Ordered `PrintCommand` entries, one readiness wait and one SDK submission             |
 | `printText`       | Text, alignment, bold, font size (default 30)                                        |
 | `print2Column`    | Left/right text and relative column weights (default 60/40); default font size 16    |
 | `print3Column`    | Left/center/right text and relative weights (default 60/40/40); default font size 16 |
@@ -116,7 +142,7 @@ Paper cutting is not exposed by this plugin.
 
 ## Results and recovery
 
-`true` means the vendor SDK returned `SDK_OK` for printing (or a valid zero-length feed/separator completed). `false` means initialization failed, the printer was not ready, arguments were invalid, native libraries were unavailable, or printing failed. Every recognized request has a reply when SDK calls return or raise a handled exception; there is no Dart-side timeout or cancellation of a blocked native call. Unknown channel methods return `notImplemented` without touching hardware.
+`true` means the vendor SDK returned `SDK_OK` for printing (or a valid empty batch/zero-length feed/separator completed). `false` means initialization failed, the printer was not ready, arguments were invalid, native libraries were unavailable, or printing failed. Every recognized request has a reply when SDK calls return or raise a handled exception; there is no Dart-side timeout or cancellation of a blocked native call. Unknown channel methods return `notImplemented` without touching hardware.
 
 Channel failures can throw `PlatformException`; unsupported platforms or missing native registration can throw `MissingPluginException`. Handle these in your app, as the example does.
 
@@ -145,7 +171,7 @@ Printing uses application context and a background serial queue. Activity rotati
 
 ## Run the example and software checks
 
-Use Flutter 3.44.2 to reproduce the software checks. The example provides receipt, QR, Code 128, and asset-image buttons, disables them while a job is running, and reports failures. Its release APK uses the example's debug signing key for testing; configure production signing in your own app.
+Use Flutter 3.44.2 to reproduce the software checks. The example prints its sample receipt as a batch with a QR code and final feed. It also provides separate QR, Code 128, and asset-image buttons, disables them while a job is running, and reports failures. Its release APK uses the example's debug signing key for testing; configure production signing in your own app.
 
 ```sh
 flutter pub get
@@ -159,7 +185,7 @@ cd android
 ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest
 ```
 
-Native unit tests mock the SDK printer to check return codes, readiness, dimensions, column styling, and invalid inputs. They do not load ARM JNI libraries or prove physical printing. The obfuscated vendor JAR lacks JVM stack-map frames, so these desktop tests use `-Xverify:none`; APK builds retain normal Android DEX verification. Flutter generates the local Gradle wrapper when building the example.
+Native unit tests mock the SDK printer to check return codes, readiness, dimensions, column styling, batch ordering, single submission, invalid inputs, and buffer cleanup. They do not load ARM JNI libraries or prove physical printing. The obfuscated vendor JAR lacks JVM stack-map frames, so these desktop tests use `-Xverify:none`; APK builds retain normal Android DEX verification. Flutter generates the local Gradle wrapper when building the example.
 
 ## Z92 acceptance checklist
 
@@ -167,6 +193,7 @@ Native unit tests mock the SDK printer to check return codes, readiness, dimensi
 - Install and run the example on the deployment Android 13 terminal. Confirm cold-start initialization and a successful receipt in both debug and your app's release build.
 - Check left/center/right text, bold/font sizes, two/three columns, long values, separators, feed, and the actual languages/fonts.
 - Scan printed QR and Code 128 codes; verify unequal width/height values and barcode readability.
+- Compare a batch against individual calls using a complete Arabic receipt with logo, rasterized fields, QR, and final feed. Print a second batch immediately and check both for missing or duplicated content; record elapsed time and scan both QR codes.
 - Test PNG/JPEG input through both `printImage` and `printBitMap`; verify image scale, contrast, and memory use.
 - Remove/reload paper, open/close the cover if supported, and exercise legitimate SDK error states. Confirm failure feedback and successful recovery without automatically duplicating a sale.
 - Test rapid taps, repeated receipts, background/resume, rotation, engine recreation, and a terminal reboot. Confirm no stuck UI or unfinished replies in normal device operation.

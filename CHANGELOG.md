@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0
+
+- Add `printBatch` with typed `PrintCommand` entries for text, columns, images,
+  QR codes, Code 128 barcodes, separators, and feed. Append in order and submit
+  once on the existing background queue, with a single readiness wait.
+- Reject malformed/nested batches and prevent submission after invalid input,
+  append failures, interruption, or engine detachment. Preserve buffer cleanup
+  and never automatically retry a failed submission.
+- Demonstrate batch printing in the example and document migration from
+  individual commands. Existing printing APIs retain their behavior.
+
 ## 1.0.2
 
 - Wait up to 10 seconds for a printing printer before submitting the next command,
