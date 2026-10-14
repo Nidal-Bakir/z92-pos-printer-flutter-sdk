@@ -9,6 +9,8 @@ enum AlignmentPrint { center, left, right }
 /// Await each operation in a receipt. A `true` result means the vendor SDK
 /// returned success; `false` means an invalid request, unavailable SDK/printer,
 /// or printing failure. Physical output still requires device verification.
+/// A temporarily printing printer is polled for up to 10 seconds before the
+/// next command is submitted. Failed submissions are never retried automatically.
 class PrinterPosSystem {
   Future<bool?> printText(
       {required String text,
