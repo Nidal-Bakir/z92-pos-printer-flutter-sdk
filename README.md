@@ -24,7 +24,7 @@ Add the package to your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  z92_pos_printer_flutter_sdk: ^1.0.1
+  z92_pos_printer_flutter_sdk: ^1.0.2
 ```
 
 Run `flutter pub get`, then fully rebuild the Android app so the native plugin and libraries are included. Hot reload alone does not install native changes.

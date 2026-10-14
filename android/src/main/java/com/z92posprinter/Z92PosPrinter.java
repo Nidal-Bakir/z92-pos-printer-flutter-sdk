@@ -22,6 +22,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.plugin.common.MethodCall;
@@ -30,6 +31,8 @@ import io.flutter.plugin.common.MethodChannel;
 /** Android bridge to the bundled ZCS SmartPos SDK. */
 public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHandler {
     private static final String TAG = "z92PosPrinter";
+    private static final long READY_TIMEOUT_MS = 10_000;
+    private static final long READY_POLL_MS = 100;
     // The SDK printer and append buffer are process-wide singletons. Keep all engines in order.
     private static final ExecutorService PRINT_QUEUE = Executors.newSingleThreadExecutor();
     private static boolean sdkInitialized;
@@ -80,7 +83,8 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
                         sdkInitialized = true;
                     }
                     if (generation == engineGeneration) {
-                        success = executePrint(driver.getPrinter(), appContext, call);
+                        success = executePrint(driver.getPrinter(), appContext, call,
+                                this, generation, READY_TIMEOUT_MS);
                     }
                 }
             } catch (Exception | LinkageError | OutOfMemoryError e) {
@@ -112,6 +116,12 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
 
     // Package visibility allows hardware-free regression tests against a mock SDK printer.
     static boolean executePrint(Printer printer, Context context, MethodCall call) {
+        return executePrint(printer, context, call, null, 0, READY_TIMEOUT_MS);
+    }
+
+    // A shorter timeout keeps deadline tests fast; production always uses READY_TIMEOUT_MS.
+    static boolean executePrint(Printer printer, Context context, MethodCall call,
+            Z92PosPrinter engine, int generation, long timeoutMs) {
         final List<?> pending;
         try {
             // SmartPos_1.9.0_R240612 has no reset API: h is its bitmap append buffer.
@@ -127,19 +137,66 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
         }
         try {
             pending.clear();
-            return executePrintJob(printer, context, call);
+            if (!waitUntilReady(printer, call, engine, generation, timeoutMs)) return false;
+            try {
+                return executePrintJob(printer, context, call, engine, generation);
+            } catch (Exception | LinkageError | OutOfMemoryError e) {
+                Log.w(TAG, call.method + " print submission exception, status="
+                        + SdkResult.SDK_ERROR + ": " + e.getClass().getSimpleName());
+                throw e;
+            }
         } finally {
             // The SDK only clears on normal completion; also release content after append/OOM failures.
             pending.clear();
         }
     }
 
-    private static boolean executePrintJob(Printer printer, Context context, MethodCall call) {
-        int status = printer.getPrinterStatus();
-        if (status != SdkResult.SDK_OK) {
-            Log.w(TAG, "Printer unavailable: " + status);
-            return false;
+    private static boolean canDispatch(Z92PosPrinter engine, int generation) {
+        return !Thread.currentThread().isInterrupted()
+                && (engine == null || generation == engine.engineGeneration);
+    }
+
+    private static boolean waitUntilReady(Printer printer, MethodCall call,
+            Z92PosPrinter engine, int generation, long timeoutMs) {
+        final long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        int status = SdkResult.SDK_ERROR;
+        boolean waited = false;
+        try {
+            while (canDispatch(engine, generation)) {
+                status = printer.getPrinterStatus();
+                if (!canDispatch(engine, generation)) break;
+                if (waited && deadline - System.nanoTime() <= 0) break;
+                if (status == SdkResult.SDK_OK) {
+                    if (waited) Log.d(TAG, call.method + " readiness waiting completed, status=" + status);
+                    return true;
+                }
+                if (status != SdkResult.SDK_PRN_STATUS_PRINTING) break;
+                if (!waited) Log.d(TAG, call.method + " readiness waiting, status=" + status);
+                waited = true;
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) break;
+                // This runs only on PRINT_QUEUE, never on the Android UI thread.
+                TimeUnit.NANOSECONDS.sleep(Math.min(remaining,
+                        TimeUnit.MILLISECONDS.toNanos(READY_POLL_MS)));
+                if (deadline - System.nanoTime() <= 0) break;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception | LinkageError | OutOfMemoryError e) {
+            Log.w(TAG, call.method + " readiness waiting exception, status=" + status
+                    + ": " + e.getClass().getSimpleName());
+            throw e;
         }
+        Log.w(TAG, call.method + " readiness waiting failed, status=" + status
+                + ", timedOut=" + (deadline - System.nanoTime() <= 0)
+                + ", interrupted=" + Thread.currentThread().isInterrupted()
+                + ", detached=" + (engine != null && generation != engine.engineGeneration));
+        return false;
+    }
+
+    private static boolean executePrintJob(Printer printer, Context context, MethodCall call,
+            Z92PosPrinter engine, int generation) {
+        if (!canDispatch(engine, generation)) return false;
         switch (call.method) {
             case "printText":
             case "printBitMap":
@@ -209,8 +266,12 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
             default:
                 throw new IllegalArgumentException("Unknown print method");
         }
-        status = printer.setPrintStart();
-        if (status != SdkResult.SDK_OK) Log.w(TAG, "Print failed: " + status);
+        if (!canDispatch(engine, generation)) return false;
+        // Never retry: a failed start can already have produced partial physical output.
+        int status = printer.setPrintStart();
+        if (status != SdkResult.SDK_OK) {
+            Log.w(TAG, call.method + " print submission failed, status=" + status);
+        }
         return status == SdkResult.SDK_OK;
     }
 
