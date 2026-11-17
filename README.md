@@ -104,10 +104,45 @@ Prepare the PNGs before calling `printBatch`. For migration, replace each indivi
 
 A batch accepts at most 1000 commands and cannot contain nested batches. Empty batches and batches containing only zero-length feed/separator commands succeed without submission when the printer is ready. Invalid commands or append exceptions prevent submission; the append buffer is cleared on every exit. The SDK combines the buffered content into one bitmap, so use receipt-sized images and batches to limit peak memory. Matching the factory demo's speed requires a comparison on the actual device.
 
+## Print speed
+
+Use `setPrintSpeed` to select the vendor SDK's low, medium, or high hardware
+speed level from Flutter. Await the result before starting a receipt:
+
+```dart
+final accepted = await printer.setPrintSpeed(speed: PrintSpeed.medium);
+if (accepted == true) {
+  await printer.printText(text: 'Medium speed test');
+}
+```
+
+The available values are `PrintSpeed.low`, `PrintSpeed.medium`, and
+`PrintSpeed.high`. These are vendor speed levels, not millimeters per second.
+`true` means the printer was ready and the SDK accepted the setting. A rejected
+setting returns `false`; channel failures can throw as with the printing APIs.
+The call initializes the SDK if necessary and runs on the same serial queue as
+printing, including the existing readiness wait. It does not print, feed paper,
+or modify the receipt buffer, and it is never retried automatically.
+
+The setting applies to the shared printer, rather than to one receipt. All
+existing print methods remain available. Applications that do not call
+`setPrintSpeed` leave the current speed unchanged. Density and transport settings
+are unchanged. Physical speed and smoothness still require comparison on the
+deployment device.
+
+The example's **Print speed** selector lets you compare low, medium, and high
+using the same receipt. A selected speed is applied before each print operation;
+a failed configuration prevents that operation. **Keep current speed** skips
+configuration and does not restore a factory default.
+
+Native changes require a full Android APK rebuild and reinstall. Hot reload
+cannot add `setPrintSpeed` to an already installed native plugin.
+
 ## Printing operations
 
 | Public method     | Input and behavior                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------ |
+| `setPrintSpeed`    | Low/medium/high hardware preset; configuration only, await before printing           |
 | `printBatch`      | Ordered `PrintCommand` entries, one readiness wait and one SDK submission             |
 | `printText`       | Text, alignment, bold, font size (default 30)                                        |
 | `print2Column`    | Left/right text and relative column weights (default 60/40); default font size 16    |
@@ -144,7 +179,7 @@ Paper cutting is not exposed by this plugin.
 
 `true` means the vendor SDK returned `SDK_OK` for printing (or a valid empty batch/zero-length feed/separator completed). `false` means initialization failed, the printer was not ready, arguments were invalid, native libraries were unavailable, or printing failed. Every recognized request has a reply when SDK calls return or raise a handled exception; there is no Dart-side timeout or cancellation of a blocked native call. Unknown channel methods return `notImplemented` without touching hardware.
 
-Channel failures can throw `PlatformException`; unsupported platforms or missing native registration can throw `MissingPluginException`. Handle these in your app, as the example does.
+Channel failures can throw `PlatformException`; unsupported platforms or missing native registration can throw `MissingPluginException`. Handle these in your app, as the example does. For `setPrintSpeed`, `true` means the vendor accepted the speed setting; it does not submit print content.
 
 The SDK status codes inspected in this version are:
 
@@ -171,7 +206,7 @@ Printing uses application context and a background serial queue. Activity rotati
 
 ## Run the example and software checks
 
-Use Flutter 3.44.2 to reproduce the software checks. The example prints its sample receipt as a batch with a QR code and final feed. It also provides separate QR, Code 128, and asset-image buttons, disables them while a job is running, and reports failures. Its release APK uses the example's debug signing key for testing; configure production signing in your own app.
+Use Flutter 3.44.2 to reproduce the software checks. The example prints its sample receipt as a batch with a QR code and final feed. It also provides separate QR, Code 128, and asset-image buttons, disables them while a job is running, and reports failures. Its speed selector applies the selected preset before each operation and prevents printing if speed configuration fails. Its release APK uses the example's debug signing key for testing; configure production signing in your own app.
 
 ```sh
 flutter pub get

@@ -4,6 +4,7 @@ import android.text.Layout;
 import com.google.zxing.BarcodeFormat;
 import com.zcs.sdk.Printer;
 import com.zcs.sdk.SdkResult;
+import com.zcs.sdk.print.PrnSpeedTypeEnum;
 import com.zcs.sdk.print.PrnStrFormat;
 import com.zcs.sdk.print.PrnTextStyle;
 import io.flutter.plugin.common.MethodCall;
@@ -98,6 +99,94 @@ public class Z92PosPrinterTest {
             entries.add(Map.of("method", command.method, "arguments", command.arguments));
         }
         return call("printBatch", "commands", entries);
+    }
+
+    @Test public void speedLevelsConfigureOnlyAfterReadinessWithoutPrinting() {
+        PrnSpeedTypeEnum[] speeds = {PrnSpeedTypeEnum.LOW_SPEED,
+                PrnSpeedTypeEnum.MEDIUM_SPEED, PrnSpeedTypeEnum.HIGH_SPEED};
+        for (int speed = 0; speed < speeds.length; speed++) {
+            clearInvocations(printer);
+            pending.add("Buffered receipt");
+            assertTrue(Z92PosPrinter.executeSetPrintSpeed(printer,
+                    call("setPrintSpeed", "speed", speed), null, 0, 1000));
+            InOrder order = inOrder(printer);
+            order.verify(printer).getPrinterStatus();
+            order.verify(printer).setPrintSpeed(speeds[speed]);
+            order.verifyNoMoreInteractions();
+            assertEquals(List.of("Buffered receipt"), pending);
+            pending.clear();
+        }
+    }
+
+    @Test public void invalidSpeedIsRejectedBeforeTouchingHardware() {
+        for (Object speed : new Object[]{null, -1, 3, "medium", 1.0, true}) {
+            assertThrows(IllegalArgumentException.class, () -> Z92PosPrinter.executeSetPrintSpeed(
+                    printer, call("setPrintSpeed", "speed", speed), null, 0, 1000));
+        }
+        verifyNoInteractions(printer);
+    }
+
+    @Test public void busyPrinterBecomesReadyBeforeSpeedIsSet() {
+        when(printer.getPrinterStatus()).thenReturn(SdkResult.SDK_PRN_STATUS_PRINTING,
+                SdkResult.SDK_OK);
+        assertTrue(Z92PosPrinter.executeSetPrintSpeed(printer,
+                call("setPrintSpeed", "speed", 1), null, 0, 1000));
+        InOrder order = inOrder(printer);
+        order.verify(printer, times(2)).getPrinterStatus();
+        order.verify(printer).setPrintSpeed(PrnSpeedTypeEnum.MEDIUM_SPEED);
+        order.verifyNoMoreInteractions();
+    }
+
+    @Test public void speedReadinessErrorsAndTimeoutPreventConfiguration() {
+        for (int status : new int[]{SdkResult.SDK_PRN_STATUS_PAPEROUT,
+                SdkResult.SDK_PRN_STATUS_TOOHEAT, SdkResult.SDK_PRN_STATUS_FAULT,
+                SdkResult.SDK_ERROR, SdkResult.SDK_PRN_STATUS_PRINTING}) {
+            when(printer.getPrinterStatus()).thenReturn(status);
+            assertFalse(Z92PosPrinter.executeSetPrintSpeed(printer,
+                    call("setPrintSpeed", "speed", 1), null, 0, 10));
+        }
+        verify(printer, never()).setPrintSpeed(any(PrnSpeedTypeEnum.class));
+        verify(printer, never()).setPrintStart();
+    }
+
+    @Test public void rejectedSpeedIsNotRetriedAndDoesNotPreventNextRequest() {
+        when(printer.setPrintSpeed(PrnSpeedTypeEnum.MEDIUM_SPEED))
+                .thenReturn(SdkResult.SDK_ERROR).thenReturn(SdkResult.SDK_OK);
+        assertFalse(Z92PosPrinter.executeSetPrintSpeed(printer,
+                call("setPrintSpeed", "speed", 1), null, 0, 1000));
+        verify(printer, times(1)).setPrintSpeed(PrnSpeedTypeEnum.MEDIUM_SPEED);
+        assertTrue(Z92PosPrinter.executeSetPrintSpeed(printer,
+                call("setPrintSpeed", "speed", 1), null, 0, 1000));
+        verify(printer, times(2)).setPrintSpeed(PrnSpeedTypeEnum.MEDIUM_SPEED);
+        verify(printer, never()).setPrintStart();
+    }
+
+    @Test public void detachedEngineCannotConfigureSpeed() {
+        assertFalse(Z92PosPrinter.executeSetPrintSpeed(printer,
+                call("setPrintSpeed", "speed", 1), new Z92PosPrinter(), -1, 1000));
+        verifyNoInteractions(printer);
+    }
+
+    @Test public void detachmentDuringReadinessCannotConfigureSpeed() throws Exception {
+        Z92PosPrinter engine = new Z92PosPrinter();
+        Field channel = Z92PosPrinter.class.getDeclaredField("channel");
+        channel.setAccessible(true);
+        channel.set(engine, mock(MethodChannel.class));
+        when(printer.getPrinterStatus()).thenAnswer(invocation -> {
+            engine.onDetachedFromEngine(null);
+            return SdkResult.SDK_OK;
+        });
+        assertFalse(Z92PosPrinter.executeSetPrintSpeed(printer,
+                call("setPrintSpeed", "speed", 1), engine, 0, 1000));
+        verify(printer, never()).setPrintSpeed(any(PrnSpeedTypeEnum.class));
+    }
+
+    @Test public void nestedSpeedConfigurationCannotBeIncludedInBatch() {
+        assertFalse(Z92PosPrinter.isPrintMethod("setPrintSpeed"));
+        assertThrows(IllegalArgumentException.class, () -> Z92PosPrinter.executePrint(
+                printer, null, batch(call("setPrintSpeed", "speed", 1))));
+        verify(printer, never()).setPrintSpeed(any(PrnSpeedTypeEnum.class));
+        verify(printer, never()).setPrintStart();
     }
 
     @Test public void batchAppendsMixedCommandsInOrderAndStartsOnce() {

@@ -13,6 +13,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _printer = PrinterPosSystem();
+  PrintSpeed? _speed;
   bool _printing = false;
   String _status = 'Run on a ZCS Z92 or Z91 with paper loaded.';
 
@@ -24,9 +25,14 @@ class _MyAppState extends State<MyApp> {
     });
     String status;
     try {
-      status = await operation() == true
-          ? 'SDK reported success. Check the printed output.'
-          : 'Printing failed. Check paper, temperature, and device logs.';
+      final speed = _speed;
+      if (speed != null && await _printer.setPrintSpeed(speed: speed) != true) {
+        status = 'Could not set print speed. Nothing was printed.';
+      } else {
+        status = await operation() == true
+            ? 'SDK reported success. Check the printed output.'
+            : 'Printing failed. Check paper, temperature, and device logs.';
+      }
     } on PlatformException catch (error) {
       status = 'Platform error: ${error.code}';
     } on MissingPluginException {
@@ -99,6 +105,26 @@ class _MyAppState extends State<MyApp> {
           children: [
             Text(_status),
             const SizedBox(height: 16),
+            const Text('Print speed'),
+            DropdownButton<PrintSpeed>(
+              value: _speed,
+              isExpanded: true,
+              hint: const Text('Keep current speed'),
+              onChanged:
+                  _printing ? null : (speed) => setState(() => _speed = speed),
+              items: const [
+                DropdownMenuItem(
+                  value: null,
+                  child: Text('Keep current speed'),
+                ),
+                DropdownMenuItem(value: PrintSpeed.low, child: Text('Low')),
+                DropdownMenuItem(
+                  value: PrintSpeed.medium,
+                  child: Text('Medium'),
+                ),
+                DropdownMenuItem(value: PrintSpeed.high, child: Text('High')),
+              ],
+            ),
             ElevatedButton(
               onPressed: _printing ? null : () => _runPrint(_printReceipt),
               child: const Text('Print sample receipt'),

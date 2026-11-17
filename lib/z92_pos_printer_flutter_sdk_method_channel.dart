@@ -11,6 +11,13 @@ class MethodChannelPosz92printer extends Posz92printerPlatform {
   final methodChannel = const MethodChannel('z92PosPrinter');
 
   @override
+  Future<bool?> setPrintSpeed({required PrintSpeed speed}) {
+    return methodChannel.invokeMethod<bool>('setPrintSpeed', {
+      'speed': speed.index,
+    });
+  }
+
+  @override
   Future<bool?> printBatch({required List<PrintCommand> commands}) {
     return methodChannel.invokeMethod<bool>('printBatch', {
       'commands': commands.map((command) => command.toMap()).toList(),

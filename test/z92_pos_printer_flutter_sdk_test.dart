@@ -62,6 +62,49 @@ void main() {
     expect(calls[8].arguments['pathImage'], image);
   });
 
+  for (final entry in {
+    PrintSpeed.low: 0,
+    PrintSpeed.medium: 1,
+    PrintSpeed.high: 2,
+  }.entries) {
+    test(
+      '${entry.key.name} speed uses a configuration call without printing',
+      () async {
+        expect(await printer.setPrintSpeed(speed: entry.key), isTrue);
+        expect(calls, hasLength(1));
+        expect(calls.single.method, 'setPrintSpeed');
+        expect(calls.single.arguments, {'speed': entry.value});
+      },
+    );
+  }
+
+  test(
+    'speed preserves rejected replies and channel exceptions without retry',
+    () async {
+      for (final result in <bool?>[false, null]) {
+        calls.clear();
+        messenger.setMockMethodCallHandler(platform.methodChannel, (
+          call,
+        ) async {
+          calls.add(call);
+          return result;
+        });
+        expect(await printer.setPrintSpeed(speed: PrintSpeed.medium), result);
+        expect(calls, hasLength(1));
+      }
+      calls.clear();
+      messenger.setMockMethodCallHandler(platform.methodChannel, (call) async {
+        calls.add(call);
+        throw PlatformException(code: 'printer_failure');
+      });
+      await expectLater(
+        printer.setPrintSpeed(speed: PrintSpeed.medium),
+        throwsA(isA<PlatformException>()),
+      );
+      expect(calls, hasLength(1));
+    },
+  );
+
   test('direct platform column calls have usable defaults', () async {
     await platform.print2ColumnText(textLeft: 'L', textRight: 'R');
     await platform.print3ColumnText(

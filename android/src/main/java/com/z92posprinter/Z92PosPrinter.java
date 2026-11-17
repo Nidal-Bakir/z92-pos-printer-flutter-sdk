@@ -14,6 +14,7 @@ import com.google.zxing.BarcodeFormat;
 import com.zcs.sdk.DriverManager;
 import com.zcs.sdk.Printer;
 import com.zcs.sdk.SdkResult;
+import com.zcs.sdk.print.PrnSpeedTypeEnum;
 import com.zcs.sdk.print.PrnStrFormat;
 import com.zcs.sdk.print.PrnTextFont;
 import com.zcs.sdk.print.PrnTextStyle;
@@ -64,7 +65,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
     @Override
     public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
         // Unknown methods must not load native libraries or touch printer hardware.
-        if (!isPrintMethod(call.method)) {
+        if (!isPrintMethod(call.method) && !call.method.equals("setPrintSpeed")) {
             result.notImplemented();
             return;
         }
@@ -86,13 +87,16 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
                         sdkInitialized = true;
                     }
                     if (generation == engineGeneration) {
-                        success = executePrint(driver.getPrinter(), appContext, call,
-                                this, generation, READY_TIMEOUT_MS);
+                        success = call.method.equals("setPrintSpeed")
+                                ? executeSetPrintSpeed(driver.getPrinter(), call,
+                                        this, generation, READY_TIMEOUT_MS)
+                                : executePrint(driver.getPrinter(), appContext, call,
+                                        this, generation, READY_TIMEOUT_MS);
                     }
                 }
             } catch (Exception | LinkageError | OutOfMemoryError e) {
                 // Keep the bool API; never expose receipt content or depend on an Activity/Toast.
-                Log.w(TAG, "Printing failed for " + call.method + ": " + e.getClass().getSimpleName());
+                Log.w(TAG, "Printer request failed for " + call.method + ": " + e.getClass().getSimpleName());
             }
             final boolean completed = success;
             mainHandler.post(() -> result.success(completed));
@@ -116,6 +120,26 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
             default:
                 return false;
         }
+    }
+
+    // Uses the same process-wide queue as printing, but never touches the append buffer.
+    static boolean executeSetPrintSpeed(Printer printer, MethodCall call,
+            Z92PosPrinter engine, int generation, long timeoutMs) {
+        int speed = integer(call, "speed", 0, 2);
+        PrnSpeedTypeEnum[] speeds = {
+                PrnSpeedTypeEnum.LOW_SPEED,
+                PrnSpeedTypeEnum.MEDIUM_SPEED,
+                PrnSpeedTypeEnum.HIGH_SPEED
+        };
+        if (!waitUntilReady(printer, call, engine, generation, timeoutMs)) return false;
+        if (!canDispatch(engine, generation)) return false;
+        int status = printer.setPrintSpeed(speeds[speed]);
+        if (status == SdkResult.SDK_OK) {
+            Log.d(TAG, "Print speed configured: " + speeds[speed] + ", status=" + status);
+        } else {
+            Log.w(TAG, "Print speed configuration failed: " + speeds[speed] + ", status=" + status);
+        }
+        return status == SdkResult.SDK_OK;
     }
 
     // Package visibility allows hardware-free regression tests against a mock SDK printer.

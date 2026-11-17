@@ -7,6 +7,9 @@ export 'print_command.dart';
 
 enum AlignmentPrint { center, left, right }
 
+/// Hardware print-speed levels supported by the ZCS SDK.
+enum PrintSpeed { low, medium, high }
+
 /// Prints through the built-in ZCS Android printer.
 ///
 /// Await each operation in a receipt. A `true` result means the vendor SDK
@@ -15,6 +18,16 @@ enum AlignmentPrint { center, left, right }
 /// A temporarily printing printer is polled for up to 10 seconds before the
 /// next command is submitted. Failed submissions are never retried automatically.
 class PrinterPosSystem {
+  /// Sets the shared printer's speed without printing or feeding paper.
+  ///
+  /// Await this before submitting a receipt. Returns `true` only when the
+  /// printer is ready and the vendor SDK accepts the setting. Omitting this
+  /// call leaves the current printer setting unchanged. This configures the
+  /// printer, rather than attaching a speed to one particular receipt.
+  Future<bool?> setPrintSpeed({required PrintSpeed speed}) {
+    return Posz92printerPlatform.instance.setPrintSpeed(speed: speed);
+  }
+
   /// Appends ordered commands and submits them as one SDK print job.
   ///
   /// Supports at most 1000 commands. An empty batch or one containing only

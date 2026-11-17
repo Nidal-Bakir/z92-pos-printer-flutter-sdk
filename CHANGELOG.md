@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add `setPrintSpeed` with `PrintSpeed.low`, `medium`, and `high` in the Flutter
+  API and Android bridge. Serialize configuration with printing, wait for
+  readiness, and report vendor failures without printing or feeding paper.
+- Preserve existing printer speed when the new API is not called. Add an
+  example speed selector and regression tests for configuration, readiness,
+  invalid values, failure handling, and engine detachment.
+
 ## 1.1.0
 
 - Add `printBatch` with typed `PrintCommand` entries for text, columns, images,
