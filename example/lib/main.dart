@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:z92_pos_printer_flutter_sdk/z92_pos_printer_flutter_sdk.dart';
@@ -37,6 +39,8 @@ class _MyAppState extends State<MyApp> {
       status = 'Platform error: ${error.code}';
     } on MissingPluginException {
       status = 'This example requires the Android ZCS printer plugin.';
+    } catch (_) {
+      status = 'Could not prepare or print the sample. Check device logs.';
     }
     if (!mounted) return;
     setState(() {
@@ -47,7 +51,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<bool?> _printReceipt() {
     // One submission; a retry could duplicate a partially printed sale.
-    return _printer.printBatch(commands: [
+    return _printCommands([
       PrintCommand.text(
         text: 'Z92 DEMO STORE',
         alignment: AlignmentPrint.center,
@@ -89,10 +93,101 @@ class _MyAppState extends State<MyApp> {
 
   Future<bool?> _printImage() async {
     final asset = await rootBundle.load('asset/a4-print-test.png');
-    return _printer.printImage(
-      pathImage:
-          asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes),
+    return _printCommands([
+      PrintCommand.image(
+          pathImage: asset.buffer
+              .asUint8List(asset.offsetInBytes, asset.lengthInBytes)),
+      PrintCommand.space(space: 3),
+    ]);
+  }
+
+  // Same image at the start of every sample, fitted to receipt width.
+  Future<Uint8List> _headerImage() async {
+    final asset = await rootBundle.load('asset/a4-print-test.png');
+    final codec = await ui.instantiateImageCodec(
+      asset.buffer.asUint8List(asset.offsetInBytes, asset.lengthInBytes),
+      targetWidth: 120,
     );
+    final frame = await codec.getNextFrame();
+    try {
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
+      canvas.drawImage(
+          frame.image, ui.Offset((384 - frame.image.width) / 2, 0), ui.Paint());
+      return await _png(recorder.endRecording(), 384, frame.image.height);
+    } finally {
+      frame.image.dispose();
+      codec.dispose();
+    }
+  }
+
+  Future<Uint8List> _png(ui.Picture picture, int width, int height) async {
+    ui.Image? image;
+    try {
+      image = await picture.toImage(width, height);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) throw StateError('Could not encode receipt image');
+      return bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes);
+    } finally {
+      image?.dispose();
+      picture.dispose();
+    }
+  }
+
+  Future<bool?> _printCommands(List<PrintCommand> commands) async {
+    final header = await _headerImage();
+    return _printer.printBatch(commands: [
+      PrintCommand.image(pathImage: header),
+      ...commands,
+    ]);
+  }
+
+  Future<Uint8List> _arabicImage(String text) async {
+    final paragraph = (ui.ParagraphBuilder(ui.ParagraphStyle(
+      textDirection: ui.TextDirection.rtl,
+      textAlign: ui.TextAlign.right,
+      fontSize: 24,
+    ))
+          ..pushStyle(ui.TextStyle(color: const ui.Color(0xff000000)))
+          ..addText(text))
+        .build();
+    try {
+      paragraph.layout(const ui.ParagraphConstraints(width: 384));
+      final recorder = ui.PictureRecorder();
+      final canvas = ui.Canvas(recorder);
+      canvas.drawColor(const ui.Color(0xffffffff), ui.BlendMode.src);
+      canvas.drawParagraph(paragraph, ui.Offset.zero);
+      return await _png(recorder.endRecording(), 384, paragraph.height.ceil());
+    } finally {
+      paragraph.dispose();
+    }
+  }
+
+  Future<bool?> _printArabic({required bool asImages}) async {
+    const lines = [
+      'موقف السيارات',
+      'إيصال دخول سيارة',
+      'رقم التذكرة: 12345',
+      'رقم السيارة: ١٢٣٤٥٦',
+      'التاريخ: 2026/11/17',
+      'وقت الدخول: 12:30',
+      'المدة: ساعتان',
+      'المبلغ الإجمالي: 15000 ل.س',
+      'شكراً لزيارتكم',
+    ];
+    final commands = <PrintCommand>[];
+    for (final line in lines) {
+      commands.add(asImages
+          ? PrintCommand.image(pathImage: await _arabicImage(line))
+          : PrintCommand.text(
+              text: line, alignment: AlignmentPrint.right, fontSize: 24));
+    }
+    commands.addAll([
+      PrintCommand.qrCode(text: 'Z92-DEMO-001', width: 200, height: 200),
+      PrintCommand.space(space: 3),
+    ]);
+    return _printCommands(commands);
   }
 
   @override
@@ -106,6 +201,8 @@ class _MyAppState extends State<MyApp> {
             Text(_status),
             const SizedBox(height: 16),
             const Text('Print speed'),
+            const Text(
+                'Keep current skips speed configuration; it does not reset the last speed.'),
             DropdownButton<PrintSpeed>(
               value: _speed,
               isExpanded: true,
@@ -132,21 +229,33 @@ class _MyAppState extends State<MyApp> {
             ElevatedButton(
               onPressed: _printing
                   ? null
-                  : () => _runPrint(() => _printer.printQRCode(
-                        text: 'Z92-DEMO-001',
-                        width: 200,
-                        height: 200,
-                      )),
+                  : () => _runPrint(() => _printArabic(asImages: false)),
+              child: const Text('Print Arabic — direct text'),
+            ),
+            ElevatedButton(
+              onPressed: _printing
+                  ? null
+                  : () => _runPrint(() => _printArabic(asImages: true)),
+              child: const Text('Print Arabic — images'),
+            ),
+            ElevatedButton(
+              onPressed: _printing
+                  ? null
+                  : () => _runPrint(() => _printCommands([
+                        PrintCommand.qrCode(
+                            text: 'Z92-DEMO-001', width: 200, height: 200),
+                        PrintCommand.space(space: 3),
+                      ])),
               child: const Text('Print QR code'),
             ),
             ElevatedButton(
               onPressed: _printing
                   ? null
-                  : () => _runPrint(() => _printer.printBarCode128(
-                        text: '1234567890',
-                        width: 300,
-                        height: 80,
-                      )),
+                  : () => _runPrint(() => _printCommands([
+                        PrintCommand.barCode128(
+                            text: '1234567890', width: 300, height: 80),
+                        PrintCommand.space(space: 3),
+                      ])),
               child: const Text('Print Code 128'),
             ),
             ElevatedButton(

@@ -135,6 +135,15 @@ using the same receipt. A selected speed is applied before each print operation;
 a failed configuration prevents that operation. **Keep current speed** skips
 configuration and does not restore a factory default.
 
+The example also has **Print Arabic — direct text** and **Print Arabic — images**
+buttons. Both use identical Arabic receipt content, QR code, and final feed.
+The image version renders each Arabic block with Flutter right-to-left layout
+as a 384-dot-wide PNG before batching, matching Ibtipark's preparation approach.
+Every sample button starts its single batch with the same image. Compare each
+receipt with **Keep current speed** first, then Medium, Low, and High. Check
+Arabic letter connections and ordering as well as paper movement. Keep current
+does not reset a speed selected earlier; persistence across reboot is unverified.
+
 Native changes require a full Android APK rebuild and reinstall. Hot reload
 cannot add `setPrintSpeed` to an already installed native plugin.
 
