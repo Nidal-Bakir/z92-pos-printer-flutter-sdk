@@ -38,6 +38,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Verify release tag matches package version
         run: |
           VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | tr -d '\r')
@@ -65,6 +71,14 @@ jobs:
       - name: Run example tests
         working-directory: example
         run: flutter test
+
+      - name: Prepare Android example for native tests
+        working-directory: example
+        run: flutter build apk --config-only
+
+      - name: Run native Android tests
+        working-directory: example/android
+        run: ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest --console=plain --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m'
 
       - name: Verify package before publishing
         run: flutter pub publish --dry-run

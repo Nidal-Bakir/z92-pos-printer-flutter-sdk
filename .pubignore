@@ -47,3 +47,9 @@ example/ios/
 **/*.jks
 **/*.apk
 **/*.aab
+
+# Local Android build caches and CI configuration are not package contents.
+**/.gradle/
+**/.kotlin/
+**/.cxx/
+.github/

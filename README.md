@@ -12,7 +12,7 @@ Flutter plugin for the **built-in printer on ZCS Z92 and Z91 Android POS termina
 - Uses the bundled `android/libs/SmartPos_1.9.0_R240612.jar` and `libSmartPosJni.so` / `libEmvCoreJni.so`. Native libraries are supplied for `armeabi-v7a` and `arm64-v8a` only. An x86 emulator cannot exercise this SDK.
 - The plugin keeps its Android minimum SDK at 21. The example follows Flutter's minimum/target SDK settings; Flutter 3.44.2 uses minimum API 24 and compile/target API 36. Android 13 is API 33 and meets those minimums.
 - The plugin and example use Java 17 source/target compatibility. The example uses AGP 8.13.1, Gradle 8.14.3, Kotlin 2.2.21, with the legacy Kotlin plugin needed for this Flutter target. Run Gradle with JDK 17 or a compatible newer JDK. Local validation uses JDK 21.
-- Dart package constraint: `>=3.0.0 <4.0.0`. Software checks use Flutter 3.44.2; compatibility with other Flutter versions requires validation.
+- Dart package constraint: `>=3.0.0 <4.0.0`. CI uses Flutter 3.44.2; version 1.2.0 was also checked locally with installed Flutter 3.47.9.
 - Release builds keep the vendor `com.zcs` classes and members because the SDK JNI bridge uses reflection. Shrinking of the rest of the host app remains enabled. The consumer rules suppress only ten missing `javax.smartcardio` types used by the SDK's optional card-reading package; `DriverManager`, `Sys`, and `Printer` do not reference that package. This plugin exposes printing, not smart-card APIs.
 - Match the actual device firmware and printer module to the bundled SDK. Do not assume every terminal sold as “Z92” is equivalent. No vendor binaries have been replaced.
 
@@ -24,7 +24,7 @@ Add the package to your app's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  z92_pos_printer_flutter_sdk: ^1.1.0
+  z92_pos_printer_flutter_sdk: ^1.2.0
 ```
 
 Run `flutter pub get`, then fully rebuild the Android app so the native plugin and libraries are included. Hot reload alone does not install native changes.
@@ -149,6 +149,16 @@ cannot add `setPrintSpeed` to an already installed native plugin.
 
 ## Printing operations
 
+Text alignment refers to the physical paper edges (or the edges of each column),
+independent of paragraph direction. Arabic and mixed-direction left/right text
+uses Android text layout with per-paragraph alignment before appending a bitmap
+to the same print job. Centered text and English-only text retain vendor rendering.
+This preserves Arabic shaping and mixed-number ordering without reversing strings.
+The alignment renderer reads the bundled SDK's current paper-width field `d`;
+it does not query or change printer configuration. If that field is unavailable
+or invalid, the job fails before submission. Revalidate this and the existing
+append-buffer field `h` when replacing the vendor JAR.
+
 | Public method     | Input and behavior                                                                   |
 | ----------------- | ------------------------------------------------------------------------------------ |
 | `setPrintSpeed`    | Low/medium/high hardware preset; configuration only, await before printing           |
@@ -229,7 +239,7 @@ cd android
 ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest
 ```
 
-Native unit tests mock the SDK printer to check return codes, readiness, dimensions, column styling, batch ordering, single submission, invalid inputs, and buffer cleanup. They do not load ARM JNI libraries or prove physical printing. The obfuscated vendor JAR lacks JVM stack-map frames, so these desktop tests use `-Xverify:none`; APK builds retain normal Android DEX verification. Flutter generates the local Gradle wrapper when building the example.
+Native unit tests mock the SDK printer to check return codes, readiness, dimensions, column styling, batch ordering, single submission, invalid inputs, and buffer cleanup. Robolectric native-graphics tests also check Android 13 paragraph alignment, wrapping, mixed-language text, columns, and bitmap dispatch. These tests do not load the vendor ARM JNI libraries or prove physical printing. The obfuscated vendor JAR lacks JVM stack-map frames, so these desktop tests use `-Xverify:none`; APK builds retain normal Android DEX verification. Flutter generates the local Gradle wrapper when building the example.
 
 ## Z92 acceptance checklist
 

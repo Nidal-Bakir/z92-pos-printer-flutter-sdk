@@ -1,13 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
+- Fix physical left/right text alignment for Arabic and mixed-direction
+  paragraphs, including multiline text, columns, and separators. Keep centered
+  text and English-only printing on their existing vendor rendering path.
 - Add `setPrintSpeed` with `PrintSpeed.low`, `medium`, and `high` in the Flutter
   API and Android bridge. Serialize configuration with printing, wait for
   readiness, and report vendor failures without printing or feeding paper.
 - Preserve existing printer speed when the new API is not called. Add an
   example speed selector and regression tests for configuration, readiness,
   invalid values, failure handling, and engine detachment.
+
+- Add example buttons for direct Arabic text and Flutter-rendered Arabic images,
+  with the same image at the start of every sample batch.
 
 ## 1.1.0
 

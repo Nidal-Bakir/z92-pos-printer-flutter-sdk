@@ -269,7 +269,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
         switch (call.method) {
             case "printText":
             case "printBitMap":
-                printer.setPrintAppendString(string(call, "text"), format(call, "Alignment"));
+                appendText(printer, string(call, "text"), format(call, "Alignment"));
                 break;
             case "printSpace":
                 int lines = integer(call, "space", 0, 1000);
@@ -306,7 +306,7 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
                 }
                 StringBuilder line = new StringBuilder(style.length() * count);
                 for (int i = 0; i < count; i++) line.append(style);
-                printer.setPrintAppendString(line.toString(), lineFormat);
+                appendText(printer, line.toString(), lineFormat);
                 break;
             case "printImage":
             case "printImageBitmap":
@@ -350,7 +350,45 @@ public class Z92PosPrinter implements FlutterPlugin, MethodChannel.MethodCallHan
         PrnStrFormat[] formats = threeColumns
                 ? new PrnStrFormat[]{format(call, "leftAlign"), format(call, "centerAlign"), format(call, "rightAlign")}
                 : new PrnStrFormat[]{format(call, "leftAlign"), format(call, "rightAlign")};
+        for (int i = 0; i < texts.length; i++) {
+            if (PrinterTextLayout.needed(texts[i], formats[i])) {
+                appendAlignedText(printer, texts, widths, formats);
+                return;
+            }
+        }
         printer.setPrintAppendStrings(texts, widths, formats);
+    }
+
+    private static void appendText(Printer printer, String text, PrnStrFormat format) {
+        if (PrinterTextLayout.needed(text, format)) {
+            appendAlignedText(printer, new String[]{text}, new int[]{1},
+                    new PrnStrFormat[]{format});
+        } else {
+            printer.setPrintAppendString(text, format);
+        }
+    }
+
+    private static void appendAlignedText(Printer printer, String[] texts, int[] widths,
+            PrnStrFormat[] formats) {
+        final int paperWidth;
+        try {
+            // Use the SDK's detected/configured width without probing or reconfiguring hardware.
+            // This field is pinned to the bundled JAR, like its existing append-buffer field h.
+            Field width = Printer.class.getDeclaredField("d");
+            width.setAccessible(true);
+            paperWidth = width.getInt(printer);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot read SDK printer width", e);
+        }
+        if (paperWidth <= 0 || paperWidth > 4096) {
+            throw new IllegalStateException("Invalid SDK printer width");
+        }
+        Bitmap bitmap = PrinterTextLayout.render(texts, widths, formats, paperWidth);
+        try {
+            printer.setPrintAppendBitmap(bitmap, Layout.Alignment.ALIGN_CENTER);
+        } finally {
+            bitmap.recycle();
+        }
     }
 
     private static PrnStrFormat format(MethodCall call, String alignmentKey) {

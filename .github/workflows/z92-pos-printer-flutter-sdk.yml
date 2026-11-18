@@ -69,7 +69,7 @@ jobs:
 
       - name: Run native Android tests
         working-directory: example/android
-        run: ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest --console=plain
+        run: ./gradlew :z92_pos_printer_flutter_sdk:testDebugUnitTest --console=plain --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m'
 
       - name: 📦 Install PANA
         run: dart pub global activate pana
